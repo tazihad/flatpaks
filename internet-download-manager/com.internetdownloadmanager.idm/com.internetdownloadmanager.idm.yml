@@ -1,0 +1,40 @@
+# Ref: https://github.com/thethink3r/winbox/blob/main/com.github.thethink3r.winbox.yml
+
+app-id: com.internetdownloadmanager.idm
+base: org.winehq.Wine
+base-version: stable-23.08
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=all
+  - --socket=pulseaudio
+  - --share=network
+  - --allow=multiarch
+  - --allow=devel
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --filesystem=xdg-download
+command: idm
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '23.08'
+
+modules:
+  - name: idm
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: "./include"
+
+    build-commands:
+      - install -D idm.sh /app/bin/idm
+      - install -D icon.png /app/exports/share/app-info/icons/flatpak/128x128/com.internetdownloadmanager.idm.png
+      - install -D com.internetdownloadmanager.idm.desktop /app/share/applications/com.internetdownloadmanager.idm.desktop
+
+cleanup:
+  - './idm'

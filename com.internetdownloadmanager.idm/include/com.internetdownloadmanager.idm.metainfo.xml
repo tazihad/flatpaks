@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.internetdownloadmanager.idm</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>CC0-1.0</project_license>
+
+  <developer id="com.internetdownloadmanager">
+    <name type="name">Tonec, Inc</name>
+  </developer>
+
+  <name type="name">Internet Download Manager</name>
+  <summary type="summary">Feature rich download manager</summary>
+
+  <description type="description">
+    <p>
+      Internet Download Manager (IDM) is a powerful tool to manage and accelerate downloads. It features support for various protocols, including HTTP, HTTPS, and FTP, and provides advanced scheduling, resume capabilities, and integration with popular web browsers.
+    </p>
+  </description>
+
+  <releases>
+    <release version="636build5" date="2020-02-02"/>
+  </releases>
+
+  <provides>
+    <binary>idm</binary>
+  </provides>
+
+  <url type="homepage">https://www.internetdownloadmanager.com/</url>
+  <url type="help">https://www.internetdownloadmanager.com/support.html</url>
+
+  <launchable type="desktop-id">com.internetdownloadmanager.idm.desktop</launchable>
+
+  <icon type="stock">com.internetdownloadmanager.idm</icon>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://www.internetdownloadmanager.com/images/idm_screenshot_6_35.jpg</image>
+    </screenshot>
+  </screenshots>
+
+  <update_contact>support@internetdownloadmanager.com</update_contact>
+
+  <categories>
+    <category>Network</category>
+  </categories>
+
+  <content_rating type="oars-1.1" />
+
+</component>

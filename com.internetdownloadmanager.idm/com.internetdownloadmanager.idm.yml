@@ -1,0 +1,56 @@
+# Ref: https://github.com/thethink3r/winbox/blob/main/com.github.thethink3r.winbox.yml
+
+app-id: com.internetdownloadmanager.idm
+base: org.winehq.Wine
+base-version: stable-23.08
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=all
+  - --socket=pulseaudio
+  - --share=network
+  - --allow=multiarch
+  - --allow=devel
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --filesystem=xdg-download
+  - --env=WINEDLLPATH=/app/dlls/lib32:/app/dlls/lib
+  - --env=WINEPREFIX=/var/data/wine
+
+command: idm
+
+inherit-extensions:
+  - org.winehq.Wine.mono
+  - org.winehq.Wine.DLLs
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '23.08'
+
+modules:
+  - name: idm
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: "./include"
+
+    build-commands:
+      - install -D idm.sh /app/bin/idm
+    post-install:
+      - install -D -m644 -t /app/share/applications/ ${FLATPAK_ID}.desktop
+      - install -D -m644 -t /app/share/metainfo/ ${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 icons/icon-16x16.png /app/share/icons/hicolor/16x16/apps/${FLATPAK_ID}.png
+      - install -Dm644 icons/icon-32x32.png /app/share/icons/hicolor/32x32/apps/${FLATPAK_ID}.png
+      - install -Dm644 icons/icon-48x48.png /app/share/icons/hicolor/48x48/apps/${FLATPAK_ID}.png
+      - install -Dm644 icons/icon-64x64.png /app/share/icons/hicolor/64x64/apps/${FLATPAK_ID}.png
+      - install -Dm644 icons/icon-128x128.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm644 icons/icon-256x256.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 icons/icon-512x512.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 icons/icon.svg /app/share/icons/hicolor/scalable/mimetypes/${FLATPAK_ID}.svg
+
+cleanup:
+  - './idm'

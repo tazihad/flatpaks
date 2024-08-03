@@ -17,7 +17,14 @@ finish-args:
   - --allow=devel
   - --system-talk-name=org.freedesktop.NetworkManager
   - --filesystem=xdg-download
+  - --env=WINEDLLPATH=/app/dlls/lib32:/app/dlls/lib
+  - --env=WINEPREFIX=/var/data/wine
+
 command: idm
+
+inherit-extensions:
+  - org.winehq.Wine.mono
+  - org.winehq.Wine.DLLs
 
 add-extensions:
   org.freedesktop.Platform.Compat.i386:
@@ -33,7 +40,14 @@ modules:
 
     build-commands:
       - install -D idm.sh /app/bin/idm
-      - install -D icon.png /app/exports/share/app-info/icons/flatpak/128x128/com.internetdownloadmanager.idm.png
+      - install -D icons/icon-16x16.png /app/share/icons/hicolor/16x16/apps/com.internetdownloadmanager.idm.png
+      - install -D icons/icon-32x32.png /app/share/icons/hicolor/32x32/apps/com.internetdownloadmanager.idm.png
+      - install -D icons/icon-48x48.png /app/share/icons/hicolor/48x48/apps/com.internetdownloadmanager.idm.png
+      - install -D icons/icon-64x64.png /app/share/icons/hicolor/64x64/apps/com.internetdownloadmanager.idm.png
+      - install -D icons/icon-128x128.png /app/share/icons/hicolor/128x128/apps/com.internetdownloadmanager.idm.png
+      - install -D icons/icon-256x256.png /app/share/icons/hicolor/256x256/apps/com.internetdownloadmanager.idm.png
+      - install -D icons/icon-512x512.png /app/share/icons/hicolor/512x512/apps/com.internetdownloadmanager.idm.png
+      - install -D icons/icon.svg /app/share/icons/hicolor/scalable/mimetypes/com.internetdownloadmanager.idm.svg
       - install -D com.internetdownloadmanager.idm.desktop /app/share/applications/com.internetdownloadmanager.idm.desktop
 
 cleanup:

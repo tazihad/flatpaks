@@ -2,8 +2,8 @@
 Name=Internet Download Manager
 Exec=idm
 Comment=Download Manager
-Type=Application;Internet;
+Type=Application
 Icon=com.internetdownloadmanager.idm
 StartupWMClass=idman.exe
-Categories=Network;
+Categories=Network;Internet;
 Terminal=false

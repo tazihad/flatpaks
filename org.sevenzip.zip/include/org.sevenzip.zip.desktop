@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=7zip
+Exec=sevenzip
+Comment=Archive Manager & Extractor
+Type=Application
+Icon=org.sevenzip.zip
+StartupWMClass=7zFM.exe
+Categories=Utility;Archiving;
+Terminal=false

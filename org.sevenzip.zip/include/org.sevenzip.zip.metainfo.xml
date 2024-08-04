@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.sevenzip.zip</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LGPL-2.1-or-later</project_license>
+
+  <developer id="org.7zip">
+    <name type="name">Igor Pavlov</name>
+  </developer>
+
+  <name type="name">7-Zip</name>
+  <summary type="summary">High compression file archiver</summary>
+
+  <description type="description">
+    <p>
+      7-Zip is a file archiver with a high compression ratio. It supports various compression formats, including 7z, ZIP, RAR, and others, and provides powerful file management capabilities with its intuitive interface.
+    </p>
+  </description>
+
+  <releases>
+    <release version="21.07" date="2021-12-26"/>
+  </releases>
+
+  <provides>
+    <binary>7z</binary>
+  </provides>
+
+  <url type="homepage">https://www.7-zip.org/</url>
+  <url type="help">https://www.7-zip.org/support.html</url>
+
+  <launchable type="desktop-id">org.7zip.7zip.desktop</launchable>
+
+  <icon type="stock">org.7zip.7zip</icon>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://7-zip.de/bilder/fm.png</image>
+    </screenshot>
+  </screenshots>
+
+  <update_contact>support@7-zip.org</update_contact>
+
+  <categories>
+    <category>Utility</category>
+  </categories>
+
+  <content_rating type="oars-1.1" />
+</component>

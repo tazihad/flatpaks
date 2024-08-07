@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=foobar2000
+Exec=foobar2000
+Comment=Advanced freeware audio player
+Type=Application
+Icon=org.foobar2000.foobar2000
+StartupWMClass=foobar2000.exe
+Categories=AudioVideo;Player;
+Terminal=false

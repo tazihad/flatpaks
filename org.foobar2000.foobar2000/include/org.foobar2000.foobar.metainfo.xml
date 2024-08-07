@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.foobar2000.foobar2000</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LGPL-2.1-or-later</project_license>
+
+  <developer id="com.foobar2000">
+    <name>Peter Pawlowski</name>
+  </developer>
+
+  <name>foobar2000</name>
+  <summary>Advanced freeware audio player</summary>
+
+  <description>
+    <p>
+      foobar2000 is an advanced freeware audio player for the Windows platform. It supports a wide range of audio formats and includes features such as gapless playback, customizable user interface, and support for third-party plugins.
+    </p>
+  </description>
+
+  <releases>
+    <release version="1.6.11" date="2021-12-30"/>
+  </releases>
+
+  <provides>
+    <binary>foobar2000</binary>
+  </provides>
+
+  <url type="homepage">https://www.foobar2000.org/</url>
+  <url type="help">https://www.foobar2000.org/support</url>
+
+  <launchable type="desktop-id">org.foobar2000.foobar2000.desktop</launchable>
+s
+  <icon type="stock">org.foobar2000.foobar2000</icon>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://www.foobar2000.org/images/th/main.png</image>
+    </screenshot>
+  </screenshots>
+
+  <update_contact>support@foobar2000.org</update_contact>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Player</category>
+  </categories>
+
+  <content_rating type="oars-1.1" />
+</component>

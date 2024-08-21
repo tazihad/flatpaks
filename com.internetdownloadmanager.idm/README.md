@@ -13,4 +13,3 @@ flatpak install --user ./idm.flatpak
     curl -L https://raw.githubusercontent.com/tazihad/idm-linux/master/flatpak-idm -o ~/.local/bin/idm
     chmod +x ~/.local/bin/idm
     ```
-3. df

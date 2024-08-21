@@ -16,4 +16,11 @@ if [ ! -f "${IDM_LOCATION}" ]; then
     "${WINE}" "${TEMP_DIR}/idm.exe"
 fi
 
-"${WINE}" "${IDM_LOCATION}"
+# Check if arguments were provided
+if [ $# -eq 0 ]; then
+    # No arguments provided
+    "${WINE}" "${IDM_LOCATION}"
+else
+    # Arguments provided, pass them to the command
+    "${WINE}" "${IDM_LOCATION}" "$@"
+fi

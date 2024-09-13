@@ -18,7 +18,7 @@ finish-args:
   - --env=WINEDLLPATH=/app/dlls/lib32:/app/dlls/lib
   - --env=WINEPREFIX=/var/data/wine
 
-command: run-idm.sh
+command: /app/bin/run-idm
 
 inherit-extensions:
   - org.winehq.Wine.mono
@@ -37,8 +37,8 @@ modules:
         path: "./include"
 
     build-commands:
-      - install -D idm.sh /app/bin/idm.sh
-      - install -D run-idm.sh /app/bin/run-idm.sh
+      - install -D idm /app/bin/idm
+      - install -D run-idm /app/bin/run-idm
     post-install:
       - install -D -m644 -t /app/share/applications/ ${FLATPAK_ID}.desktop
       - install -D -m644 -t /app/share/metainfo/ ${FLATPAK_ID}.metainfo.xml

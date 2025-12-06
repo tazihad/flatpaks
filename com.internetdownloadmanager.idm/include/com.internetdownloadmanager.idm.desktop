@@ -5,5 +5,5 @@ Comment=Download Manager
 Type=Application
 Icon=com.internetdownloadmanager.idm
 StartupWMClass=idman.exe
-Categories=Network;Internet;
+Categories=Network;
 Terminal=false

@@ -1,9 +1,9 @@
 app-id: com.internetdownloadmanager.idm
-base: org.winehq.Wine
-base-version: stable-23.08
 runtime: org.freedesktop.Platform
-runtime-version: '23.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
+base: org.winehq.Wine
+base-version: wow64-25.08
 finish-args:
   - --share=ipc
   - --socket=x11
@@ -19,15 +19,6 @@ finish-args:
   - --env=WINEPREFIX=/var/data/wine
 
 command: /app/bin/run-idm
-
-inherit-extensions:
-  - org.winehq.Wine.mono
-  - org.winehq.Wine.DLLs
-
-add-extensions:
-  org.freedesktop.Platform.Compat.i386:
-    directory: lib/i386-linux-gnu
-    version: '23.08'
 
 modules:
   - name: idm

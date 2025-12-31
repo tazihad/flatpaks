@@ -1,3 +1,6 @@
 [submodule "/home/zihad/Downloads/flatpaks/info.keepass.KeePass2/shared-modules"]
 	path = /home/zihad/Downloads/flatpaks/info.keepass.KeePass2/shared-modules
 	url = https://github.com/flathub/shared-modules.git
+[submodule "info.keepass.KeePass2/shared-modules"]
+	path = info.keepass.KeePass2/shared-modules
+	url = https://github.com/flathub/shared-modules.git

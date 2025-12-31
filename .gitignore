@@ -1,0 +1,24 @@
+# --- User specified ---
+repo/
+build-dir/
+.flatpak-builder/
+fcitx5-openbangla.flatpak
+
+# --- Standard Flatpak & Builder ignores ---
+# Common build directories
+build/
+_build/
+
+# Flatpak builder cache and export directories
+.flatpak-builder/
+export/
+
+# --- Temporary Files ---
+# Swap files (Vim, etc.)
+*.swp
+*~
+
+# Object files and libraries (if building locally)
+*.o
+*.so
+*.a

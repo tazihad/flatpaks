@@ -22,3 +22,6 @@ export/
 *.o
 *.so
 *.a
+
+# Linux
+.directory

@@ -1,0 +1,86 @@
+app-id: org.fcitx.Fcitx5.Addon.OpenBangla
+branch: stable
+runtime: org.fcitx.Fcitx5
+runtime-version: stable
+sdk: org.kde.Sdk//5.15-25.08
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+build-extension: true
+separate-locales: false
+build-options:
+  prefix: /app/addons/OpenBangla
+  append-path: /usr/lib/sdk/rust-stable/bin
+  build-args:
+   - --share=network
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/pkgconfig
+  - /lib/cmake
+  - '*.la'
+  - '*.a'
+modules:
+  - name: riti
+    buildsystem: simple
+    build-options:
+      prepend-ld-library-path: /app/addons/OpenBangla/lib
+      env:
+        CARGO_HOME: /run/build/riti/cargo
+    build-commands:
+      - cargo build --release --offline
+      - install -d /app/addons/OpenBangla/lib/
+      - install -Dm755 target/release/*riti* /app/addons/OpenBangla/lib/
+    sources:
+      # generate cargo source: https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo#usage
+      - ./generated-sources.json 
+      - type: git
+        url: https://github.com/OpenBangla/riti.git
+        commit: 0d11ba0136261f7a26e4d8879345d7b6e757edd5
+  - name: fcitx5-openbangla
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_FCITX=ON
+      - -DCMAKE_INSTALL_PREFIX=/app/addons/OpenBangla
+      - -DCMAKE_INSTALL_DATADIR=/app/addons/OpenBangla/share
+      - -DCMAKE_INSTALL_RPATH=/app/addons/OpenBangla/lib
+      - -DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE
+    build-commands:
+      - cmake .. -GNinja
+      - ninja install
+    post-install:
+      - sed -i '/^Icon=/d' /app/addons/OpenBangla/share/fcitx5/inputmethod/openbangla.conf
+    builddir: true
+    sources:
+      - type: git
+        url: https://github.com/OpenBangla/OpenBangla-Keyboard.git
+        tag: develop
+
+  - name: qt5
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/lib/qt5/plugins
+      - mkdir -p ${FLATPAK_DEST}/lib/qt5/qml
+      - |
+        for lib in /usr/lib/x86_64-linux-gnu/libQt5*; do
+            install -Dm644 "$lib" "${FLATPAK_DEST}/lib/$(basename "$lib")"
+        done
+      - cp -r /usr/lib/plugins/* ${FLATPAK_DEST}/lib/qt5/plugins/
+      - cp -r /usr/lib/qml/* ${FLATPAK_DEST}/lib/qt5/qml/
+      - cp -P /usr/lib/x86_64-linux-gnu/libicu*.so* ${FLATPAK_DEST}/lib/
+      - cp -P /usr/lib/x86_64-linux-gnu/libpcre2-16.so* ${FLATPAK_DEST}/lib/ || true
+
+  - name: openbangla-gui-wrapper
+    buildsystem: simple
+    build-commands:
+      - mv /app/addons/OpenBangla/bin/openbangla-gui /app/addons/OpenBangla/bin/openbangla-gui-bin
+      - |
+            cat > /app/addons/OpenBangla/bin/openbangla-gui << 'EOF'
+            #!/bin/sh
+            export BASE_DIR=/app/addons/OpenBangla
+            export QT_PLUGIN_PATH=$BASE_DIR/lib/qt5/plugins
+            export QML2_IMPORT_PATH=$BASE_DIR/lib/qt5/qml
+            export QT_QPA_PLATFORM_PLUGIN_PATH=/app/addons/OpenBangla/lib/qt5/plugins/platforms
+            exec /app/addons/OpenBangla/bin/openbangla-gui-bin "$@"
+            EOF
+      - chmod +x /app/addons/OpenBangla/bin/openbangla-gui

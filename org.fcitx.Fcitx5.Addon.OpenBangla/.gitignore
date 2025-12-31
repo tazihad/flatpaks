@@ -1,0 +1,4 @@
+repo/
+build-dir/
+.flatpak-builder/
+fcitx5-openbangla.flatpak

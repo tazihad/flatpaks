@@ -1,0 +1,135 @@
+app-id: info.keepass.KeePass2
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.mono6
+
+command: keepass
+
+finish-args:
+  - --socket=x11
+  - --share=ipc
+  - --filesystem=home
+  - --env=GTK_DATA_PREFIX=null
+  - --env=LD_LIBRARY_PATH=/app/lib/mono/4.5:$LD_LIBRARY_PATH
+
+modules:
+  - shared-modules/gtk2/gtk2.json
+
+  - name: mono
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/mono6/install.sh
+
+  - name: extralibs
+    buildsystem: simple
+    build-commands:
+      - cp -ar /usr/lib/sdk/mono6/lib/mono/gac/System.Drawing /app/lib/mono/gac/ && rm -f /app/lib/mono/gac/System.Drawing/*/*.pdb
+      - cp -ar /usr/lib/sdk/mono6/lib/mono/gac/System.Windows.Forms /app/lib/mono/gac/ && rm -f /app/lib/mono/gac/System.Windows.Forms/*/*.pdb
+      - cp -ar /usr/lib/sdk/mono6/lib/mono/gac/System.Web /app/lib/mono/gac/ && rm -f /app/lib/mono/gac/System.Web/*/*.pdb
+      - cp -ar /usr/lib/sdk/mono6/lib/mono/gac/System.Web.Extensions /app/lib/mono/gac/ && rm -f /app/lib/mono/gac/System.Web.Extensions/*/*.pdb
+      - cp -n /usr/lib/sdk/mono6/lib/mono/4.8-api/*.dll /app/lib/mono/4.5/
+
+
+  - name: libgdiplus
+    sources:
+      - type: archive
+        url: https://download.mono-project.com/sources/libgdiplus/libgdiplus-6.1.tar.gz
+        sha256: 97d5a83d6d6d8f96c27fb7626f4ae11d3b38bc88a1726b4466aeb91451f3255b
+
+  - name: keepass
+    buildsystem: simple
+    sources:
+      - type: file
+        sha256: a613ca206fbf5875ad8fe5e440a76418ce01135d3304dc56a0df12255d83fe07
+        url: https://master.dl.sourceforge.net/project/keepass/KeePass%202.x/2.58/KeePass-2.58.zip
+        dest-filename: keepass.zip
+        dest: keepass
+      - type: script
+        dest-filename: create-config-wrapper
+        commands:
+         - |
+            export MONO_PATH=/app/lib/mono/4.5/
+            export LD_LIBRARY_PATH=/app/lib/mono/4.5:$LD_LIBRARY_PATH
+
+            # Ensure KeePass.config.xml is handled correctly
+            if [ ! -e "$XDG_CONFIG_HOME/KeePass/KeePass.config.xml" ]; then
+                echo "$XDG_CONFIG_HOME/KeePass/KeePass.config.xml does not exist, generating default config."
+
+                # Create the KeePass directory if it doesn't exist
+                mkdir -p "$XDG_CONFIG_HOME/KeePass"
+
+                # Generate a default KeePass.config.xml
+                cat <<EOF > "$XDG_CONFIG_HOME/KeePass/KeePass.config.xml"
+            <?xml version="1.0" encoding="utf-8"?>
+            <Configuration>
+            <KeePassAppData>
+                <Language>en-US</Language>
+                <LastUsedVersion>2.58</LastUsedVersion>
+            </KeePassAppData>
+            <KeyFileOptions>
+                <UseKeyFile>false</UseKeyFile>
+                <KeyFilePath />
+            </KeyFileOptions>
+            <DatabaseSettings>
+                <LastOpened />
+                <LastSaved />
+            </DatabaseSettings>
+            </Configuration>
+            EOF
+            else
+                echo "$XDG_CONFIG_HOME/KeePass/KeePass.config.xml already exists, skipping generation."
+            fi
+
+            # Ensure Plugins directory exists and symlink it
+            echo "Checking and creating Plugins directory if missing..."
+            install -Dm755 -d "${XDG_DATA_HOME}/Plugins"
+            [ ! -e /app/keepass/Plugins ] && ln -s "${XDG_DATA_HOME}/Plugins" /app/keepass/Plugins && echo "Symlink created for Plugins" || echo "Plugins already exists, skipping symlink creation"
+
+            exec mono /app/keepass/KeePass.exe "$@"
+
+      - type: file
+        path: info.keepass.KeePass2.metainfo.xml
+      - type: file
+        path: info.keepass.KeePass2.desktop
+      - type: file
+        path: info.keepass.KeePass2.png
+
+    build-commands:
+        - unzip keepass/keepass.zip -d /app/keepass
+        - rm -f /app/keepass/KeePass.config.xml
+        - rmdir /app/keepass/Plugins
+        - ln -s $HOME/.var/app/info.keepass.KeePass2/config/KeePass/KeePass.config.xml /app/keepass/KeePass.config.xml
+        - mkdir -p "${XDG_DATA_HOME}/Plugins"
+        - ln -s "$HOME/.var/app/info.keepass.KeePass2/data/Plugins" /app/keepass
+        - install -Dm 755 create-config-wrapper /app/bin/keepass
+        - install -Dm644 info.keepass.KeePass2.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+        - install -Dm644 info.keepass.KeePass2.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+        - install -Dm644 info.keepass.KeePass2.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

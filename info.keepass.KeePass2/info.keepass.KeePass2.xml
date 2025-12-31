@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+    <mime-type type="application/x-keepass">
+        <sub-class-of type="application/x-executable"/>
+        <sub-class-of type="application/octet-stream"/>
+        <comment>KeePass password database</comment>
+        <glob pattern="*.kdbx" weight="100"/>
+        <icon name="info.keepass.KeePass2"/>
+    </mime-type>
+</mime-info>

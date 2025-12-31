@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+    <id>info.keepass.KeePass2</id>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-2.0-or-later</project_license>
+    <name>KeePass</name>
+    <summary>A secure and open-source password manager</summary>
+    <description>
+        <p>KeePass is a free and open-source password manager that helps you store and manage your passwords securely.</p>
+        <p>It encrypts your password database using strong encryption algorithms.</p>
+        <p>Website: <a href="https://keepass.info/">https://keepass.info/</a></p>
+    </description>
+    <screenshots>
+        <screenshot type="default">
+            <image>https://keepass.info/screenshots/keepass_2x/main_big.png</image>
+        </screenshot>
+    </screenshots>
+    <url type="homepage">https://keepass.info/</url>
+    <url type="bugtracker">https://sourceforge.net/p/keepass/bugs/</url>
+    <developer_name>Dominik Reichl</developer_name>
+    <content_rating type="oars-1.1"/>
+    <releases>
+        <release version="2.58" date="2025-03-04"/>
+    </releases>
+    <update_contact>dominik.reichl@t-online.de</update_contact>
+</component>

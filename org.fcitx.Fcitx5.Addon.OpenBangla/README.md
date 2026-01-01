@@ -1,8 +1,8 @@
 # OpenBangla Keyboard Addon for Fcitx5
 
 ### Install
-- Download [fcitx5-openbangla.flatpak](https://github.com/tazihad/org.fcitx.Fcitx5.Addon.OpenBangla/releases)
-- Install - 
+- Download [fcitx5-openbangla.flatpak](https://github.com/tazihad/flatpaks/releases)
+- Install fcitx5 flatpak and openbangla addon
 ```
 flatpak install flathub org.fcitx.Fcitx5
 flatpak install --user fcitx5-openbangla.flatpak

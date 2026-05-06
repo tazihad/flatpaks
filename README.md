@@ -1,4 +1,5 @@
 # flatpaks
+[![GitHub All Releases](https://img.shields.io/github/downloads/tazihad/flatpaks/total)](https://github.com/tazihad/flatpaks/releases/latest)
 #### This is my flatpak builds
 
 prequisites:

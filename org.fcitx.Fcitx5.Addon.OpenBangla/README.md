@@ -3,10 +3,16 @@
 ### Install
 - Download [fcitx5-openbangla.flatpak](https://github.com/tazihad/flatpaks/releases)
 - Install fcitx5 flatpak and openbangla addon
-```
+```sh
 flatpak install flathub org.fcitx.Fcitx5
 flatpak install --user fcitx5-openbangla.flatpak
 ```
+
+- Register tray icons and app launcher on the host (since Flatpak addon runtimes cannot export icons across sandbox boundaries automatically):
+```sh
+./install-icons.sh
+```
+
 
 ### Build
 
@@ -26,11 +32,8 @@ flatpak build-bundle --runtime repo fcitx5-openbangla.flatpak org.fcitx.Fcitx5.A
 
 Original issue https://github.com/OpenBangla/OpenBangla-Keyboard/issues/390
 
-run settings:
+### Configuration & Settings:
+To launch the OpenBangla Keyboard GUI settings:
 ```sh
 flatpak run --command="/app/addons/OpenBangla/bin/openbangla-gui" org.fcitx.Fcitx5
 ```
-
-### What's not working:
-- System tray icon doesn't work. 
-

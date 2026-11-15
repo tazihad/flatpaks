@@ -1,0 +1,122 @@
+From e98c68e2177b0ea15f6891954ef556b8a3ac4d74 Mon Sep 17 00:00:00 2001
+From: Andelib Taref Ababa <88821308+IamAndelib@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 00:31:24 +0600
+Subject: [PATCH 1/2] Fix crash and doubled values in suffix-derived selections
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+get_prev_selection() derives a selection for a suffixed word from a learned
+base (e.g. "ami" -> "amier"). It had two bugs:
+
+- An empty learned value made `base.chars().last().unwrap()` panic. Since
+  riti is called through `extern "C"`, the panic aborts the whole input
+  method process (fcitx5/ibus). Example: commit the literal ":)" candidate,
+  then type ":e".
+- The suffix loop didn't stop at the first match, so every split whose base
+  was learned appended another base+suffix (`amier` -> "আমইয়েরআমইয়ের"). The
+  result was also written back into the selections, so the garbage was
+  saved and kept the correct candidate from being preselected.
+
+Skip unusable bases, use only the first (longest) learned base, and don't
+store derived selections; they are recomputed on demand.
+---
+ src/phonetic/suggestion.rs | 61 ++++++++++++++++++++++++++++++++++----
+ 1 file changed, 55 insertions(+), 6 deletions(-)
+
+diff --git a/src/phonetic/suggestion.rs b/src/phonetic/suggestion.rs
+index 71286df..0a4b5ad 100644
+--- a/src/phonetic/suggestion.rs
++++ b/src/phonetic/suggestion.rs
+@@ -248,7 +248,7 @@ impl PhoneticSuggestion {
+         &self,
+         string: &SplittedString,
+         data: &Data,
+-        selections: &mut HashMap<String, String, RandomState>,
++        selections: &HashMap<String, String, RandomState>,
+     ) -> usize {
+         let len = string.word().len();
+         let mut selected = String::with_capacity(len * 3);
+@@ -263,8 +263,12 @@ impl PhoneticSuggestion {
+                     let key = &string.word()[..len - test.len()];
+ 
+                     if let Some(base) = selections.get(key) {
+-                        let rmc = base.chars().last().unwrap();
+-                        let suffix_lmc = suffix.chars().next().unwrap();
++                        // An empty base or suffix can't be joined; try a shorter suffix.
++                        let (Some(rmc), Some(suffix_lmc)) =
++                            (base.chars().last(), suffix.chars().next())
++                        else {
++                            continue;
++                        };
+                         selected.push_str(base);
+ 
+                         match rmc {
+@@ -285,9 +289,9 @@ impl PhoneticSuggestion {
+                             _ => (),
+                         }
+                         selected.push_str(suffix);
+-
+-                        // Save this for future reuse.
+-                        selections.insert(string.word().to_string(), selected.to_string());
++                        // Use only the longest learned base. Derived selections are
++                        // recomputed on demand and never stored.
++                        break;
+                     }
+                 }
+             }
+@@ -768,6 +772,51 @@ mod tests {
+         suggestion.include_from_dictionary("(", "", &mut suggestions);
+         assert_eq!(suggestions, Vec::<Rank>::new());
+     }
++    #[test]
++    fn test_prev_selection_empty_base_does_not_panic() {
++        // A selection with an empty value (e.g. saved by committing the literal
++        // candidate for `:)`) must not crash the suffix lookup for `:e`.
++        let mut suggestion = PhoneticSuggestion::default();
++        let mut selections = HashMap::with_hasher(RandomState::new());
++        let data = Data::new();
++        selections.insert(":".to_string(), "".to_string());
++
++        suggestion.suggestions = vec![Rank::Other(":ে".to_string(), 0)];
++        assert_eq!(
++            suggestion.get_prev_selection(
++                &SplittedString::split(":e", false),
++                &data,
++                &mut selections
++            ),
++            0
++        );
++    }
++
++    #[test]
++    fn test_prev_selection_suffix_is_applied_once_and_not_stored() {
++        // Both `ami` and `amie` are learned. For `amier` only ONE suffix split may be
++        // used; appending base+suffix for every matching split doubles the result.
++        let mut suggestion = PhoneticSuggestion::default();
++        let mut selections = HashMap::with_hasher(RandomState::new());
++        let data = Data::new();
++        selections.insert("ami".to_string(), "আমই".to_string());
++        selections.insert("amie".to_string(), "আমইয়ে".to_string());
++
++        suggestion.suggestions = vec![
++            Rank::Other("আমিয়ের".to_string(), 0),
++            Rank::Other("আমইয়ের".to_string(), 0),
++        ];
++        assert_eq!(
++            suggestion.get_prev_selection(
++                &SplittedString::split("amier", false),
++                &data,
++                &mut selections
++            ),
++            1
++        );
++        // Derived selections are recomputed on demand, never written back.
++        assert_eq!(selections.len(), 2);
++    }
+ }
+ 
+ #[cfg(feature = "bench")]
+-- 
+2.56.0
+

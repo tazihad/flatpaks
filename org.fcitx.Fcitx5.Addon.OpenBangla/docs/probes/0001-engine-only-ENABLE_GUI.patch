@@ -1,0 +1,52 @@
+From e26b91b67c8d2bf4f88da1ea5dcbdc6f32383047 Mon Sep 17 00:00:00 2001
+From: probe <probe@localhost>
+Date: Thu, 12 Nov 2026 06:32:31 +0600
+Subject: [PATCH] probe: ENABLE_GUI option (engine-only build)
+
+---
+ CMakeLists.txt | 22 ++++++++++++++++------
+ 1 file changed, 16 insertions(+), 6 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2c130d3..b43157a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -28,9 +28,15 @@ if(APPLE)
+     include(AddSwift)
+ endif()
+ 
+-find_package(Qt5 COMPONENTS Widgets Network Svg REQUIRED)
+-
+-message(STATUS "Qt5 framework version: ${Qt5Core_VERSION}")
++option(ENABLE_GUI "Build the OpenBangla Keyboard settings GUI (requires Qt5)" ON)
++
++# Qt is needed by the GUI, by libShared (used by the IBus engine) and on
++# Windows/macOS. The Fcitx engine alone needs no Qt.
++if(ENABLE_GUI OR ENABLE_IBUS OR ENABLE_BOTH OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
++    set(OBK_NEED_QT ON)
++    find_package(Qt5 COMPONENTS Widgets Network Svg REQUIRED)
++    message(STATUS "Qt5 framework version: ${Qt5Core_VERSION}")
++endif()
+ 
+ # Get system information. WIN32 and APPLE are defined by CMake
+ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+@@ -146,9 +152,13 @@ if(APPLE)
+ endif()
+ 
+ add_subdirectory(src/engine)
+-add_subdirectory(src/platform)
+-add_subdirectory(src/frontend)
+-add_subdirectory(src/shared)
++if(ENABLE_GUI OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
++    add_subdirectory(src/platform)
++    add_subdirectory(src/frontend)
++endif()
++if(OBK_NEED_QT)
++    add_subdirectory(src/shared)
++endif()
+ 
+ # uninstall target
+ if(NOT TARGET uninstall)
+-- 
+2.56.0
+

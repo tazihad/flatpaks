@@ -1,0 +1,443 @@
+From 35533ef2cca9510a9f34cd5492f83801fc0408f8 Mon Sep 17 00:00:00 2001
+From: Andelib Taref Ababa <88821308+IamAndelib@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 00:31:24 +0600
+Subject: [PATCH 2/2] Don't abort the input method on damaged or unwritable
+ user data
+
+Several unwrap()s on user data panic, and a panic across the C FFI aborts
+the host input method process. Each of these failures happened on every
+activation until the user deleted the file by hand:
+
+- a truncated or invalid phonetic-candidate-selection.json
+- a truncated or invalid user autocorrect.json, at load and at every word
+  start
+- a selection file that can't be written (read-only dir, full disk, path
+  is a directory)
+- an unparsable fixed layout file (e.g. a half-written user import)
+
+Treat unreadable selection/autocorrect files as empty and stop retrying
+until the file changes. Save selections through a temporary file and a
+rename so a crash can't leave a truncated file. Never store a selection
+with an empty key or value (committing the literal ":)" stored {":": ""}).
+Drop such entries, and values doubled by the old suffix bug, when loading.
+Fall back to Avro Phonetic when a fixed layout can't be parsed.
+
+FixedMethod::new() now returns Option. The unused, panicking
+utility::read() is removed.
+---
+ src/context.rs         |  27 ++++-
+ src/fixed/method.rs    |  10 +-
+ src/phonetic/method.rs | 247 ++++++++++++++++++++++++++++++++++-------
+ src/utility.rs         |  12 +-
+ 4 files changed, 239 insertions(+), 57 deletions(-)
+
+diff --git a/src/context.rs b/src/context.rs
+index 264870f..9bde7ae 100644
+--- a/src/context.rs
++++ b/src/context.rs
+@@ -105,8 +105,12 @@ impl dyn Method {
+             Box::new(PhoneticMethod::new(config))
+         } else if config.is_khipro() {
+             Box::new(KhiproMethod::new(config))
++        } else if let Some(method) = FixedMethod::new(config) {
++            Box::new(method)
+         } else {
+-            Box::new(FixedMethod::new(config))
++            // A damaged layout file must not take down the input method:
++            // fall back to Avro Phonetic.
++            Box::new(PhoneticMethod::new(config))
+         }
+     }
+ }
+@@ -127,7 +131,7 @@ mod tests {
+         config::{
+             get_fixed_method_defaults, get_khipro_method_defaults, get_phonetic_method_defaults,
+         },
+-        keycodes::{VC_A, VC_E, VC_H, VC_L, VC_M, VC_P, VC_R},
++        keycodes::{VC_A, VC_E, VC_H, VC_I, VC_L, VC_M, VC_P, VC_R},
+     };
+ 
+     #[test]
+@@ -191,4 +195,23 @@ mod tests {
+         let suggestion = context.get_suggestion_for_key(VC_H, 0, 0);
+         assert_eq!(suggestion.get_suggestions(), ["হ"]);
+     }
++
++    #[test]
++    fn test_invalid_fixed_layout_falls_back_to_phonetic() {
++        // A torn/invalid layout file (e.g. a half-written user import) must not panic.
++        let dir = std::env::temp_dir().join(format!("riti-test-layout-{}", std::process::id()));
++        std::fs::create_dir_all(&dir).unwrap();
++        let broken = dir.join("Broken.json");
++        std::fs::write(&broken, r#"{"info": {"layout": {"name": "Brok"#).unwrap();
++
++        let mut config = get_phonetic_method_defaults();
++        assert!(config.set_layout_file_path(broken.to_str().unwrap()));
++        let context = RitiContext::new_with_config(&config);
++        // Falls back to Avro phonetic: "ami" gives আমি.
++        context.get_suggestion_for_key(VC_A, 0, 0);
++        context.get_suggestion_for_key(VC_M, 0, 0);
++        let suggestion = context.get_suggestion_for_key(VC_I, 0, 0);
++        assert!(!suggestion.is_empty());
++        let _ = std::fs::remove_dir_all(dir);
++    }
+ }
+diff --git a/src/fixed/method.rs b/src/fixed/method.rs
+index 6840544..2200e3b 100644
+--- a/src/fixed/method.rs
++++ b/src/fixed/method.rs
+@@ -105,16 +105,18 @@ impl Method for FixedMethod {
+ 
+ impl FixedMethod {
+     /// Creates a new instance of `FixedMethod` with the given layout.
+-    pub(crate) fn new(config: &Config) -> Self {
+-        let layout = config.get_layout().and_then(Layout::parse).unwrap();
++    ///
++    /// Returns `None` if the layout file can't be read or parsed.
++    pub(crate) fn new(config: &Config) -> Option<Self> {
++        let layout = config.get_layout().and_then(Layout::parse)?;
+ 
+-        FixedMethod {
++        Some(FixedMethod {
+             buffer: String::with_capacity(20 * 3), // A Bengali character is 3 bytes in size.
+             typed: String::with_capacity(20),
+             pending_kar: None,
+             suggestions: Vec::with_capacity(10),
+             layout,
+-        }
++        })
+     }
+ 
+     fn create_suggestion(&mut self, data: &Data, config: &Config) -> Suggestion {
+diff --git a/src/phonetic/method.rs b/src/phonetic/method.rs
+index 3fe74ed..cbd4aa5 100644
+--- a/src/phonetic/method.rs
++++ b/src/phonetic/method.rs
+@@ -1,7 +1,8 @@
+ // Phonetic Method
+ use ahash::RandomState;
+ use std::collections::HashMap;
+-use std::fs::{write, File};
++use std::fs::{rename, write};
++use std::path::Path;
+ use std::time::SystemTime;
+ 
+ use crate::config::Config;
+@@ -10,7 +11,7 @@ use crate::data::Data;
+ use crate::keycodes::keycode_to_char;
+ use crate::phonetic::suggestion::PhoneticSuggestion;
+ use crate::suggestion::Suggestion;
+-use crate::utility::{read, SplittedString};
++use crate::utility::SplittedString;
+ 
+ pub(crate) struct PhoneticMethod {
+     buffer: String,
+@@ -26,27 +27,18 @@ pub(crate) struct PhoneticMethod {
+ impl PhoneticMethod {
+     /// Creates a new `PhoneticMethod` struct.
+     pub(crate) fn new(config: &Config) -> Self {
+-        // Load candidate selections file.
+-        let selections = if let Ok(file) = std::fs::read(config.get_user_phonetic_selection_data())
+-        {
+-            serde_json::from_slice(&file).unwrap()
+-        } else {
+-            HashMap::with_hasher(RandomState::new())
+-        };
++        // Load candidate selections file. A missing or damaged file means "no selections".
++        let mut selections: HashMap<String, String, RandomState> =
++            std::fs::read(config.get_user_phonetic_selection_data())
++                .ok()
++                .and_then(|file| serde_json::from_slice(&file).ok())
++                .unwrap_or_default();
++        selections.retain(|key, value| is_valid_selection(key, value));
+ 
+-        // Load user's auto correct file.
+-        let (modified, autocorrect) = {
+-            if let Ok(mut file) = File::open(config.get_user_phonetic_autocorrect()) {
+-                let modified = file.metadata().unwrap().modified().unwrap();
+-                let autocorrect = serde_json::from_slice(&read(&mut file)).unwrap();
+-                (modified, autocorrect)
+-            } else {
+-                (
+-                    SystemTime::UNIX_EPOCH,
+-                    HashMap::with_hasher(RandomState::new()),
+-                )
+-            }
+-        };
++        // Load user's auto correct file. A damaged file is treated as empty until it changes.
++        let (modified, autocorrect) = load_autocorrect(&config.get_user_phonetic_autocorrect())
++            .unwrap_or((SystemTime::UNIX_EPOCH, None));
++        let autocorrect = autocorrect.unwrap_or_default();
+ 
+         PhoneticMethod {
+             buffer: String::with_capacity(20),
+@@ -117,17 +109,16 @@ impl Method for PhoneticMethod {
+                 SplittedString::split(self.suggestion.suggestions[index].to_string(), true)
+                     .word()
+                     .to_string();
+-            self.selections.insert(
+-                SplittedString::split(&self.buffer, false)
+-                    .word()
+-                    .to_string(),
+-                suggestion,
+-            );
+-            write(
+-                config.get_user_phonetic_selection_data(),
+-                serde_json::to_string(&self.selections).unwrap(),
+-            )
+-            .unwrap();
++            let key = SplittedString::split(&self.buffer, false)
++                .word()
++                .to_string();
++            // e.g. the literal `:)` candidate has an empty word part: nothing to learn.
++            if is_valid_selection(&key, &suggestion) {
++                self.selections.insert(key, suggestion);
++                // Failing to save must never take down the input method.
++                let _ =
++                    save_selections(&config.get_user_phonetic_selection_data(), &self.selections);
++            }
+         }
+ 
+         // Reset to defaults
+@@ -135,14 +126,14 @@ impl Method for PhoneticMethod {
+     }
+ 
+     fn update_engine(&mut self, config: &Config) {
+-        if let Ok(mut file) = File::open(config.get_user_phonetic_autocorrect()) {
+-            let modified = file.metadata().unwrap().modified().unwrap();
+-            // Update the auto correct entries if only the file was modified in the meantime.
+-            if modified > self.modified {
+-                self.suggestion.user_autocorrect =
+-                    serde_json::from_slice(&read(&mut file)).unwrap();
+-                self.modified = modified;
++        // Update the auto correct entries if only the file was modified in the meantime.
++        if let Some((modified, autocorrect)) =
++            load_autocorrect_if_newer(&config.get_user_phonetic_autocorrect(), Some(self.modified))
++        {
++            if let Some(autocorrect) = autocorrect {
++                self.suggestion.user_autocorrect = autocorrect;
+             }
++            self.modified = modified;
+         }
+     }
+ 
+@@ -190,8 +181,59 @@ impl Default for PhoneticMethod {
+     }
+ }
+ 
++/// A learned selection is usable only if both sides are non-empty and the value
++/// isn't a word doubled by the old suffix bug (`vei` → `vেইvেই`). Genuinely
++/// reduplicated words keep a doubled key too (`kaka` → `কাকা`).
++fn is_valid_selection(key: &str, value: &str) -> bool {
++    !key.is_empty() && !value.is_empty() && (!is_doubled(value) || is_doubled(key))
++}
++
++fn is_doubled(text: &str) -> bool {
++    let half = text.len() / 2;
++    text.len() % 2 == 0 && text.is_char_boundary(half) && text[..half] == text[half..]
++}
++
++/// Writes the selections through a temporary file and a rename, so a crash or a
++/// full disk can never leave a truncated file behind.
++fn save_selections(
++    path: &Path,
++    selections: &HashMap<String, String, RandomState>,
++) -> std::io::Result<()> {
++    let json = serde_json::to_string(selections).map_err(std::io::Error::other)?;
++    let tmp = path.with_extension("json.tmp");
++    write(&tmp, json)?;
++    rename(&tmp, path).inspect_err(|_| {
++        let _ = std::fs::remove_file(&tmp);
++    })
++}
++
++type AutoCorrect = HashMap<String, String, RandomState>;
++
++/// Reads the user's auto correct file: its modification time, and its entries
++/// (`None` if the file can't be parsed). `None` if it can't be opened at all.
++fn load_autocorrect(path: &Path) -> Option<(SystemTime, Option<AutoCorrect>)> {
++    load_autocorrect_if_newer(path, None)
++}
++
++/// Like [`load_autocorrect`], but `None` unless the file is newer than `than`.
++fn load_autocorrect_if_newer(
++    path: &Path,
++    than: Option<SystemTime>,
++) -> Option<(SystemTime, Option<AutoCorrect>)> {
++    let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
++    if than.is_some_and(|than| modified <= than) {
++        return None;
++    }
++    let entries = std::fs::read(path)
++        .ok()
++        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
++    Some((modified, entries))
++}
++
+ #[cfg(test)]
+ mod tests {
++    use std::collections::HashMap;
++
+     use super::PhoneticMethod;
+     use crate::config::get_phonetic_method_defaults;
+     use crate::context::Method;
+@@ -235,4 +277,129 @@ mod tests {
+         let suggestion = method.get_suggestion(VC_R, 0, 3, &data, &config);
+         assert_eq!(suggestion.previously_selected_index(), 0);
+     }
++
++    /// A fresh, empty user directory for one test (never the real user data dir).
++    fn temp_user_config(name: &str) -> (crate::config::Config, std::path::PathBuf) {
++        let dir = std::env::temp_dir().join(format!("riti-test-{}-{}", name, std::process::id()));
++        let _ = std::fs::remove_dir_all(&dir);
++        std::fs::create_dir_all(&dir).unwrap();
++        let mut config = get_phonetic_method_defaults();
++        assert!(config.set_user_dir(dir.to_str().unwrap()));
++        (config, dir)
++    }
++
++    #[test]
++    fn test_commit_never_stores_empty_selection() {
++        // Committing the literal candidate for `:)` used to store {":": ""}.
++        let (config, dir) = temp_user_config("commit-empty");
++        let mut method = PhoneticMethod {
++            buffer: ":)".to_string(),
++            ..Default::default()
++        };
++        method.suggestion.suggestions = vec![
++            crate::suggestion::Rank::Other("😊".to_string(), 0),
++            crate::suggestion::Rank::Other(":)".to_string(), 0),
++        ];
++        method.candidate_committed(1, &config);
++        assert!(method
++            .selections
++            .iter()
++            .all(|(k, v)| !k.is_empty() && !v.is_empty()));
++        let _ = std::fs::remove_dir_all(dir);
++    }
++
++    #[test]
++    fn test_load_drops_empty_and_doubled_selections() {
++        let (config, dir) = temp_user_config("load-clean");
++        std::fs::write(
++            dir.join("phonetic-candidate-selection.json"),
++            r#"{":": "", "": "x", "vei": "vেইvেই", "ami": "আমি", "kaka": "কাকা"}"#,
++        )
++        .unwrap();
++        let method = PhoneticMethod::new(&config);
++        // Empty keys/values and values doubled by the old suffix bug are dropped;
++        // genuinely reduplicated words (key doubled too) are kept.
++        assert_eq!(method.selections.len(), 2);
++        assert_eq!(
++            method.selections.get("ami").map(String::as_str),
++            Some("আমি")
++        );
++        assert_eq!(
++            method.selections.get("kaka").map(String::as_str),
++            Some("কাকা")
++        );
++        let _ = std::fs::remove_dir_all(dir);
++    }
++
++    #[test]
++    fn test_new_survives_torn_selection_file() {
++        let (config, dir) = temp_user_config("torn-selection");
++        std::fs::write(
++            dir.join("phonetic-candidate-selection.json"),
++            r#"{"ami": "আ"#,
++        )
++        .unwrap();
++        let method = PhoneticMethod::new(&config);
++        assert!(method.selections.is_empty());
++        let _ = std::fs::remove_dir_all(dir);
++    }
++
++    #[test]
++    fn test_survives_torn_autocorrect_file() {
++        let (config, dir) = temp_user_config("torn-autocorrect");
++        let path = dir.join("autocorrect.json");
++        std::fs::write(&path, r#"{"amar": "আমা"#).unwrap();
++        let mut method = PhoneticMethod::new(&config);
++        // A later modification that is still torn must not panic either.
++        std::thread::sleep(std::time::Duration::from_millis(20));
++        std::fs::write(&path, r#"{"tumi": "তু"#).unwrap();
++        method.update_engine(&config);
++        let _ = std::fs::remove_dir_all(dir);
++    }
++
++    #[test]
++    fn test_commit_survives_unwritable_selection_file() {
++        let (config, dir) = temp_user_config("unwritable");
++        // The selection file path is a directory, so saving it fails.
++        std::fs::create_dir_all(dir.join("phonetic-candidate-selection.json")).unwrap();
++        let mut method = PhoneticMethod {
++            buffer: "kotha".to_string(),
++            ..Default::default()
++        };
++        method.suggestion.suggestions = vec![
++            crate::suggestion::Rank::Other("কথা".to_string(), 0),
++            crate::suggestion::Rank::Other("কোথা".to_string(), 0),
++        ];
++        method.candidate_committed(1, &config);
++        assert_eq!(
++            method.selections.get("kotha").map(String::as_str),
++            Some("কোথা")
++        );
++        let _ = std::fs::remove_dir_all(dir);
++    }
++
++    #[test]
++    fn test_saved_selections_are_complete_json() {
++        let (config, dir) = temp_user_config("save-json");
++        let mut method = PhoneticMethod {
++            buffer: "kotha".to_string(),
++            ..Default::default()
++        };
++        method.suggestion.suggestions = vec![
++            crate::suggestion::Rank::Other("কথা".to_string(), 0),
++            crate::suggestion::Rank::Other("কোথা".to_string(), 0),
++        ];
++        method.candidate_committed(1, &config);
++        let saved = std::fs::read(dir.join("phonetic-candidate-selection.json")).unwrap();
++        let parsed: HashMap<String, String> = serde_json::from_slice(&saved).unwrap();
++        assert_eq!(parsed.get("kotha").map(String::as_str), Some("কোথা"));
++        // Saved via a temporary file + rename: nothing else is left behind.
++        let leftovers: Vec<_> = std::fs::read_dir(&dir)
++            .unwrap()
++            .filter_map(|e| e.ok())
++            .filter(|e| e.file_name() != "phonetic-candidate-selection.json")
++            .collect();
++        assert!(leftovers.is_empty());
++        let _ = std::fs::remove_dir_all(dir);
++    }
+ }
+diff --git a/src/utility.rs b/src/utility.rs
+index b343428..538e91c 100644
+--- a/src/utility.rs
++++ b/src/utility.rs
+@@ -1,4 +1,4 @@
+-use std::{borrow::Cow, fs::File, io::Read, ops::Deref};
++use std::{borrow::Cow, ops::Deref};
+ 
+ use crate::context::{MODIFIER_ALT_GR, MODIFIER_SHIFT};
+ 
+@@ -52,16 +52,6 @@ pub(crate) fn get_modifiers(modifier: u8) -> Modifiers {
+     (shift, alt_gr)
+ }
+ 
+-/// Read the entire contents of a file into a bytes vector.
+-///
+-/// Optimized to allocate the required amount of capacity beforehand.
+-pub(crate) fn read(file: &mut File) -> Vec<u8> {
+-    let len = file.metadata().map(|m| m.len() + 1).unwrap();
+-    let mut buf = Vec::with_capacity(len as usize);
+-    file.read_to_end(&mut buf).unwrap();
+-    buf
+-}
+-
+ /// A meta characters splitted string.
+ ///
+ /// Meta characters (`-]~!@#%&*()_=+[{}'\";<>/?|.,।`) are splitted
+-- 
+2.56.0
+

@@ -1,0 +1,53 @@
+From 71e3ddbbb9688310ccdce4bcde35f25bbc5dcbc5 Mon Sep 17 00:00:00 2001
+From: Andelib Taref Ababa <88821308+IamAndelib@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 01:08:29 +0600
+Subject: [PATCH] frontend: show the tray icon when running inside Flatpak
+
+The tray icon comes from QIcon::fromTheme("openbangla-keyboard"). For a
+theme icon, Qt's StatusNotifierItem publishes only IconName, with an empty
+IconPixmap. Inside a Flatpak (e.g. as part of the Fcitx5 add-on) the icon
+exists only in the sandbox, so the host tray can't resolve the name and
+shows an empty slot.
+
+When /.flatpak-info exists, build the tray icon from pixmaps at the usual
+tray sizes. Such an icon has no name, so Qt sends the pixels. Behaviour
+outside Flatpak is unchanged.
+---
+ src/frontend/TopBar.cpp | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/src/frontend/TopBar.cpp b/src/frontend/TopBar.cpp
+index 5720ddc..fc3663c 100644
+--- a/src/frontend/TopBar.cpp
++++ b/src/frontend/TopBar.cpp
+@@ -26,6 +26,7 @@
+ #include <QPushButton>
+ #include <QMenu>
+ #include <QDir>
++#include <QFile>
+ #include "TopBar.h"
+ #include "Layout.h"
+ #include "Settings.h"
+@@ -184,7 +185,18 @@ void TopBar::SetupPopupMenus() {
+ }
+ 
+ void TopBar::SetupTrayIcon() {
+-  tray = new QSystemTrayIcon(QIcon::fromTheme("openbangla-keyboard", QIcon(":/images/tray.png")), this);
++  QIcon trayIcon = QIcon::fromTheme("openbangla-keyboard", QIcon(":/images/tray.png"));
++  // Inside a Flatpak sandbox the host's tray can't find our theme icon by name,
++  // and Qt only sends the name for a theme icon, leaving an empty slot in the
++  // panel. Send the pixels instead: a QIcon built from pixmaps has no name.
++  if (QFile::exists("/.flatpak-info")) {
++    QIcon pixels;
++    for (int size : {16, 22, 24, 32, 48, 64}) {
++      pixels.addPixmap(trayIcon.pixmap(size));
++    }
++    trayIcon = pixels;
++  }
++  tray = new QSystemTrayIcon(trayIcon, this);
+   tray->setToolTip("OpenBangla Keyboard");
+ 
+   /* Tray Menu */
+-- 
+2.56.0
+

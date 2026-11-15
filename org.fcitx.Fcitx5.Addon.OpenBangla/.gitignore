@@ -1,4 +1,11 @@
+# Build artifacts
 repo/
 build-dir/
 .flatpak-builder/
 fcitx5-openbangla.flatpak
+out/
+test-build.sh
+
+# Old/obsolete files
+flatpak-cargo-generator.py
+generated-sources.json

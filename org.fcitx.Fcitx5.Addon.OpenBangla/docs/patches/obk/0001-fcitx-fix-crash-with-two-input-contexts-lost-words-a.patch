@@ -1,0 +1,186 @@
+From 4b3f6a967eed1f27469cf7024c1b4379395ff2b9 Mon Sep 17 00:00:00 2001
+From: Andelib Taref Ababa <88821308+IamAndelib@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 00:38:58 +0600
+Subject: [PATCH] fcitx: fix crash with two input contexts, lost words and
+ per-word config reloads
+
+- context(): currentIC_ was never assigned (the guard required it to be valid
+  first), so all input contexts shared one riti session and suggestion. A key
+  in a second context while the first was mid-word dereferenced that context's
+  null candidate list and crashed fcitx5. Always track the current context;
+  null-check the candidate list everywhere.
+- commit(): it used the page-local cursorIndex(), which is -1 after paging the
+  candidate list. Space/Enter then committed nothing, the riti session stayed
+  open, and the next word was merged into it. Commit the globally selected
+  candidate instead.
+- deactivate(): switching input method mid-word (e.g. Ctrl+Space) reset the
+  state and dropped the pending word. Commit it on InputContextSwitchInputMethod.
+- reloadConfig(): `time < lastConfigTimestamp_` reloaded and re-parsed
+  Keyboard.conf at every word start. Re-read only when the modification time
+  changed (also when it went backwards, e.g. a restored file), but still let
+  riti pick up a changed user autocorrect file. Use the non-throwing
+  last_write_time() overload: a file vanishing between locate() and stat()
+  threw out of keyEvent and terminated fcitx5.
+---
+ src/engine/fcitx/openbangla.cpp | 76 ++++++++++++++++++++++-----------
+ src/engine/fcitx/openbangla.h   |  2 +
+ 2 files changed, 53 insertions(+), 25 deletions(-)
+
+diff --git a/src/engine/fcitx/openbangla.cpp b/src/engine/fcitx/openbangla.cpp
+index 04e3e1c..45915cc 100644
+--- a/src/engine/fcitx/openbangla.cpp
++++ b/src/engine/fcitx/openbangla.cpp
+@@ -108,12 +108,7 @@ public:
+     auto index = 0;
+ 
+     if (!riti_suggestion_is_lonely(suggestion)) {
+-      auto candidateList = std::dynamic_pointer_cast<CommonCandidateList>(
+-          ic_->inputPanel().candidateList());
+-      auto idx = candidateList->globalCursorIndex();
+-      if (idx >= 0 && idx < candidateList->totalSize()) {
+-        index = idx;
+-      }
++      index = selectedIndex();
+     }
+ 
+     auto *txt = riti_suggestion_get_pre_edit_text(suggestion, index);
+@@ -139,11 +134,9 @@ public:
+ 
+     std::string text;
+     if (!riti_suggestion_is_lonely(suggestion)) {
+-      auto candidateList = ic_->inputPanel().candidateList();
+-      auto index = candidateList->cursorIndex();
+-      if (index >= 0 && index < candidateList->size()) {
+-        candidateList->candidate(index).select(ic_);
+-      }
++      // Use the global index: after paging, the page-local cursor index is -1
++      // and nothing was committed while the riti session stayed open.
++      selectCandidate({}, selectedIndex());
+     } else {
+       char *txt = riti_suggestion_get_pre_edit_text(suggestion, 0);
+       text = txt;
+@@ -334,12 +327,7 @@ public:
+ 
+     if (riti_context_ongoing_input_session(ctx) && engine_->suggestion() &&
+         !riti_suggestion_is_lonely(engine_->suggestion())) {
+-      auto candidateList = std::dynamic_pointer_cast<CommonCandidateList>(
+-          ic_->inputPanel().candidateList());
+-      auto idx = candidateList->globalCursorIndex();
+-      if (idx >= 0 && idx < candidateList->totalSize()) {
+-        index = idx;
+-      }
++      index = selectedIndex();
+     }
+ 
+     engine_->setSuggestion(
+@@ -361,6 +349,18 @@ public:
+   }
+ 
+ private:
++  /// Global index of the selected candidate, or 0 if there's no candidate
++  /// list for this input context (e.g. it belongs to another context).
++  int selectedIndex() const {
++    auto candidateList = std::dynamic_pointer_cast<CommonCandidateList>(
++        ic_->inputPanel().candidateList());
++    if (!candidateList) {
++      return 0;
++    }
++    auto idx = candidateList->globalCursorIndex();
++    return idx >= 0 && idx < candidateList->totalSize() ? idx : 0;
++  }
++
+   OpenBanglaEngine *engine_;
+   InputContext *ic_;
+   /* Unfortunately, we have to keep track of the right Alt Key. */
+@@ -395,6 +395,19 @@ void OpenBanglaEngine::keyEvent(const InputMethodEntry & /*entry*/,
+   state->keyEvent(keyEvent);
+ }
+ 
++void OpenBanglaEngine::deactivate(const InputMethodEntry &entry,
++                                  InputContextEvent &event) {
++  // Switching to another input method mid-word must not lose the word.
++  // (On focus out, clients with ClientUnfocusCommit commit the preedit.)
++  if (event.type() == EventType::InputContextSwitchInputMethod) {
++    auto *ic = event.inputContext();
++    if (riti_context_ongoing_input_session(context(ic))) {
++      ic->propertyFor(&factory_)->commit();
++    }
++  }
++  reset(entry, event);
++}
++
+ void OpenBanglaEngine::reset(const InputMethodEntry & /*entry*/,
+                              InputContextEvent &event) {
+   auto *state = event.inputContext()->propertyFor(&factory_);
+@@ -404,15 +417,18 @@ void OpenBanglaEngine::reset(const InputMethodEntry & /*entry*/,
+ RitiContext *OpenBanglaEngine::context(InputContext *ic) {
+   // Check if the last input context is same as the current one.
+   // Since RitiContext is shared, reset any existing state if needed.
+-  if (currentIC_.isValid() && ic != currentIC_.get()) {
++  if (ic != currentIC_.get()) {
+     suggestion_.reset();
+     if (riti_context_ongoing_input_session(ctx_.get())) {
+       riti_context_finish_input_session(ctx_.get());
+     }
+-    auto *oldIC = currentIC_.get();
+-    oldIC->inputPanel().reset();
+-    oldIC->updatePreedit();
+-    oldIC->updateUserInterface(UserInterfaceComponent::InputPanel);
++    if (auto *oldIC = currentIC_.get()) {
++      oldIC->inputPanel().reset();
++      oldIC->updatePreedit();
++      oldIC->updateUserInterface(UserInterfaceComponent::InputPanel);
++    }
++    // Without this the check above never ran and all input contexts shared
++    // one riti session, which crashed when keys reached a second context.
+     currentIC_ = ic->watch();
+   }
+   return ctx_.get();
+@@ -487,18 +503,28 @@ void OpenBanglaEngine::reloadConfig() {
+                                             "OpenBangla/Keyboard.conf");
+   auto time = std::filesystem::file_time_type::min();
+   if (!path.empty()) {
+-    time = std::filesystem::last_write_time(path);
++    // The file can vanish between locate() and here; the throwing overload
++    // would terminate fcitx5.
++    std::error_code ec;
++    auto mtime = std::filesystem::last_write_time(path, ec);
++    if (!ec) {
++      time = mtime;
++    }
+   }
+-  if (time < lastConfigTimestamp_) {
++  if (ctx_ && time == lastConfigTimestamp_) {
++    // Unchanged (or still missing): only let riti pick up a changed user
++    // autocorrect file, instead of re-parsing Keyboard.conf at every word.
++    // `==` rather than `<=` so a restored older file is picked up too.
++    riti_context_update_engine(ctx_.get(), cfg_.get());
+     return;
+   }
++  lastConfigTimestamp_ = time;
+ 
+   RawConfig config;
+   auto configFile = StandardPath::global().open(
+       StandardPath::Type::Config, "OpenBangla/Keyboard.conf", O_RDONLY);
+   if (configFile.isValid()) {
+     FCITX_OPENBANGLA_DEBUG() << "Reload openbangla configuration";
+-    lastConfigTimestamp_ = time;
+     readFromIni(config, configFile.fd());
+   }
+   populateConfig(config);
+diff --git a/src/engine/fcitx/openbangla.h b/src/engine/fcitx/openbangla.h
+index 627490f..7b38ef7 100644
+--- a/src/engine/fcitx/openbangla.h
++++ b/src/engine/fcitx/openbangla.h
+@@ -53,6 +53,8 @@ public:
+ 
+   void activate(const fcitx::InputMethodEntry & /*entry*/,
+                 fcitx::InputContextEvent & /*event*/) override;
++  void deactivate(const fcitx::InputMethodEntry &entry,
++                  fcitx::InputContextEvent &event) override;
+   void keyEvent(const InputMethodEntry &entry, KeyEvent &keyEvent) override;
+   void reset(const InputMethodEntry &entry, InputContextEvent &event) override;
+ 
+-- 
+2.56.0
+

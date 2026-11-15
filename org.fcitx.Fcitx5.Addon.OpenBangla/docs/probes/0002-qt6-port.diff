@@ -1,0 +1,126 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b43157a..4f9612d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -34,8 +34,10 @@ option(ENABLE_GUI "Build the OpenBangla Keyboard settings GUI (requires Qt5)" ON
+ # Windows/macOS. The Fcitx engine alone needs no Qt.
+ if(ENABLE_GUI OR ENABLE_IBUS OR ENABLE_BOTH OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+     set(OBK_NEED_QT ON)
+-    find_package(Qt5 COMPONENTS Widgets Network Svg REQUIRED)
+-    message(STATUS "Qt5 framework version: ${Qt5Core_VERSION}")
++    # Prefer Qt6, fall back to Qt5.
++    find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets Network Svg REQUIRED)
++    find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets Network Svg REQUIRED)
++    message(STATUS "Qt framework version: ${QT_VERSION}")
+ endif()
+ 
+ # Get system information. WIN32 and APPLE are defined by CMake
+@@ -163,7 +165,7 @@ endif()
+ # uninstall target
+ if(NOT TARGET uninstall)
+     configure_file(
+-            "${CMAKE_MODULE_PATH}/cmake_uninstall.cmake.in"
++            "${CMAKE_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
+             "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"
+             IMMEDIATE @ONLY)
+ 
+diff --git a/src/engine/ibus/CMakeLists.txt b/src/engine/ibus/CMakeLists.txt
+index 37890bb..3b8e220 100644
+--- a/src/engine/ibus/CMakeLists.txt
++++ b/src/engine/ibus/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ include_directories(../riti/include ../../shared ${IBUS_INCLUDE_DIRS})
+ add_executable(ibus-engine-openbangla main.cpp)
+-target_link_libraries(ibus-engine-openbangla riti libShared Qt5::Core ${IBUS_LIBRARIES} dl pthread)
++target_link_libraries(ibus-engine-openbangla riti libShared Qt${QT_VERSION_MAJOR}::Core ${IBUS_LIBRARIES} dl pthread)
+ 
+ configure_file(${CMAKE_SOURCE_DIR}/data/openbangla.xml.in ${CMAKE_BINARY_DIR}/data/openbangla.xml)
+ 
+diff --git a/src/frontend/AutoCorrectDialog.cpp b/src/frontend/AutoCorrectDialog.cpp
+index 6623f72..f2db591 100644
+--- a/src/frontend/AutoCorrectDialog.cpp
++++ b/src/frontend/AutoCorrectDialog.cpp
+@@ -90,7 +90,7 @@ QVariantMap AutoCorrectDialog::getEntries() {
+    */
+   QJsonObject::const_iterator iter = usrDict.constBegin();
+   while (iter != usrDict.constEnd()) {
+-    dct.insert(iter.key(), iter.value());
++    dct.insert(iter.key(), iter.value().toVariant());
+ 
+     ++iter;
+   }
+diff --git a/src/frontend/CMakeLists.txt b/src/frontend/CMakeLists.txt
+index 95aacce..3b5524c 100644
+--- a/src/frontend/CMakeLists.txt
++++ b/src/frontend/CMakeLists.txt
+@@ -23,7 +23,7 @@ set(SRC_MAIN main.cpp
+         AvroPhonetic.cpp
+         PlatformConfig.cpp)
+ 
+-set(LINK_LIBS libShared Qt5::Widgets Qt5::Network Qt5::Svg platform)
++set(LINK_LIBS libShared Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Svg platform)
+ 
+ if(OS_LINUX)
+     list(APPEND LINK_LIBS ${ZSTD_LIBRARIES})
+@@ -92,7 +92,7 @@ if(APPLE)
+         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+     )
+ 
+-    get_target_property(_qmake_executable Qt5::qmake IMPORTED_LOCATION)
++    get_target_property(_qmake_executable Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
+         get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
+         find_program(MACDEPLOYQT_EXECUTABLE macdeployqt HINTS "${_qt_bin_dir}")
+     
+@@ -112,7 +112,7 @@ endif()
+ target_link_libraries(openbangla-gui ${LINK_LIBS})
+ 
+ if(WIN32)
+-    get_target_property(_qmake_executable Qt5::qmake IMPORTED_LOCATION)
++    get_target_property(_qmake_executable Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
+     get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
+     find_program(WINDEPLOYQT_EXECUTABLE NAMES windeployqt-qt5 windeployqt HINTS "${_qt_bin_dir}")
+ 
+diff --git a/src/frontend/LayoutConverter.cpp b/src/frontend/LayoutConverter.cpp
+index 1d3ca40..1411f49 100644
+--- a/src/frontend/LayoutConverter.cpp
++++ b/src/frontend/LayoutConverter.cpp
+@@ -305,7 +305,7 @@ ConversionResult LayoutConverter::convertAvroLayout(QString path) {
+     }
+ 
+     if (xmlReader->isStartElement()) {
+-      QStringRef name = xmlReader->name();
++      const auto name = xmlReader->name();
+       if (name == "Layout" || name == "KeyData") {
+         continue;
+       }
+@@ -322,7 +322,7 @@ ConversionResult LayoutConverter::convertAvroLayout(QString path) {
+         }
+       }
+ 
+-      if (!name.contains("Key") && !name.contains("Num")) {
++      if (!name.contains(QLatin1String("Key")) && !name.contains(QLatin1String("Num"))) {
+         // Meta data conversion
+         if (name == "LayoutName") {
+           infoLayout["name"] = data;
+diff --git a/src/frontend/TopBar.cpp b/src/frontend/TopBar.cpp
+index 5720ddc..098d689 100644
+--- a/src/frontend/TopBar.cpp
++++ b/src/frontend/TopBar.cpp
+@@ -25,6 +25,7 @@
+ #include <QFileDialog>
+ #include <QPushButton>
+ #include <QMenu>
++#include <QActionGroup>
+ #include <QDir>
+ #include "TopBar.h"
+ #include "Layout.h"
+diff --git a/src/shared/CMakeLists.txt b/src/shared/CMakeLists.txt
+index cb08c1d..d31c292 100644
+--- a/src/shared/CMakeLists.txt
++++ b/src/shared/CMakeLists.txt
+@@ -4,4 +4,4 @@ add_library(libShared
+         Settings.cpp
+         FileSystem.cpp)
+ 
+-target_link_libraries(libShared Qt5::Core)
++target_link_libraries(libShared Qt${QT_VERSION_MAJOR}::Core)

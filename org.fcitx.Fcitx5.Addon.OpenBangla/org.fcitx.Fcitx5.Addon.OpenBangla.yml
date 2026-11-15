@@ -2,7 +2,7 @@ app-id: org.fcitx.Fcitx5.Addon.OpenBangla
 branch: stable
 runtime: org.fcitx.Fcitx5
 runtime-version: stable
-sdk: org.kde.Sdk//5.15-25.08
+sdk: org.kde.Sdk//6.11
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
 build-extension: true
@@ -31,9 +31,11 @@ modules:
       env:
         CARGO_HOME: /run/build/fcitx5-openbangla/cargo
         CARGO_NET_OFFLINE: "true"
+      append-path: /usr/lib/sdk/rust-stable/bin
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DENABLE_FCITX=ON
+      - -DENABLE_GUI=ON
       - -DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE
       - -DCMAKE_INSTALL_RPATH=/app/addons/OpenBangla/lib
     post-install:
@@ -46,52 +48,24 @@ modules:
     sources:
       - type: git
         url: https://github.com/OpenBangla/OpenBangla-Keyboard.git
-        commit: 9befb6fcdb144fd7eacebda726abfd6fc74a65e9
-        disable-submodules: true
-      - type: git
-        url: https://github.com/OpenBangla/riti.git
-        commit: aa13a834e05e580b14fd104bbf0c95543bbef064
+        commit: eea66aff18ac14cc43fa1273afd68729be5b5e67
+      - type: file
+        path: riti-Cargo.lock
         dest: src/engine/riti
-      - ./generated-sources.json
-      - type: inline
-        contents: |
-          [source.vendored-sources]
-          directory = "/run/build/fcitx5-openbangla/cargo/vendor"
-
-          [source.crates-io]
-          replace-with = "vendored-sources"
-        dest: cargo
-        dest-filename: config.toml
-      - type: inline
-        contents: |
-          [source.vendored-sources]
-          directory = "/run/build/fcitx5-openbangla/cargo/vendor"
-
-          [source.crates-io]
-          replace-with = "vendored-sources"
-        dest: src/engine/riti/.cargo
-        dest-filename: config.toml
-
-  - name: qt5
-    buildsystem: simple
-    build-commands:
-      - mkdir -p "${FLATPAK_DEST}/lib/qt5/plugins"
-      - cp -a /usr/lib/*-linux-gnu/libQt5*.so* "${FLATPAK_DEST}/lib/"
-      - cp -a /usr/lib/plugins/* "${FLATPAK_DEST}/lib/qt5/plugins/"
-      - cp -a /usr/lib/*-linux-gnu/libicu*.so* "${FLATPAK_DEST}/lib/"
-      - cp -a /usr/lib/*-linux-gnu/libpcre2-16.so* "${FLATPAK_DEST}/lib/" 2>/dev/null || true
-
-  - name: openbangla-gui-wrapper
-    buildsystem: simple
-    build-commands:
-      - mv "${FLATPAK_DEST}/bin/openbangla-gui" "${FLATPAK_DEST}/bin/openbangla-gui-bin"
-      - |
-        cat > "${FLATPAK_DEST}/bin/openbangla-gui" << 'EOF'
-        #!/bin/sh
-        export BASE_DIR=/app/addons/OpenBangla
-        export LD_LIBRARY_PATH="$BASE_DIR/lib:${LD_LIBRARY_PATH}"
-        export QT_PLUGIN_PATH="$BASE_DIR/lib/qt5/plugins"
-        export QT_QPA_PLATFORM_PLUGIN_PATH="$BASE_DIR/lib/qt5/plugins/platforms"
-        exec "$BASE_DIR/bin/openbangla-gui-bin" "$@"
-        EOF
-      - chmod +x "${FLATPAK_DEST}/bin/openbangla-gui"
+        dest-filename: Cargo.lock
+      - ./cargo-sources-riti.json
+      - ./cargo-sources-platform.json
+      - type: patch
+        path: docs/probes/0001-engine-only-ENABLE_GUI.patch
+      - type: patch
+        path: docs/probes/0002-qt6-port.diff
+      - type: patch
+        path: docs/patches/obk/0001-fcitx-fix-crash-with-two-input-contexts-lost-words-a.patch
+      - type: patch
+        path: docs/patches/obk/0002-frontend-show-the-tray-icon-when-running-inside-Flat.patch
+      - type: patch
+        path: docs/patches/riti/0001-Fix-crash-and-doubled-values-in-suffix-derived-selec.patch
+        options: [-d, src/engine/riti]
+      - type: patch
+        path: docs/patches/riti/0002-Don-t-abort-the-input-method-on-damaged-or-unwritabl.patch
+        options: [-d, src/engine/riti]
